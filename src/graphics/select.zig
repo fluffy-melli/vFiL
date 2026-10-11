@@ -43,20 +43,24 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.o
 
     var selected: usize = 0;
 
+    try graphics.clear();
+
+    try con_out.setAttribute(.{ .foreground = .white, .background = .black });
+    try con_out.setCursorPosition(title_pad - 1, 0);
+    try graphics.printf(allocator, " {s} ", .{title});
+
+    try con_out.setAttribute(.{ .foreground = .yellow, .background = .black });
+    try con_out.setCursorPosition(instruction_pad - 1, geo.rows - 1);
+    try graphics.printf(allocator, " {s} ", .{instruction});
+
     while (true) {
-        try graphics.clear();
-
-        try con_out.setAttribute(.{ .foreground = .white, .background = .black });
-        try graphics.printf(allocator, "\r\n", .{});
-        try graphics.print_spaces(title_pad);
-        try graphics.printf(allocator, "{s}\r\n\r\n", .{title});
-
+        var row: usize = 2;
         for (applications.items, 0..) |app, i| {
             try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try graphics.print_spaces(9);
+            try con_out.setCursorPosition(geo.columns / 3 - 3, row);
 
             if (i == selected) {
-                try con_out.setAttribute(.{ .foreground = .white, .background = .lightgray });
+                try con_out.setAttribute(.{ .foreground = .white, .background = .blue });
             } else {
                 try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
             }
@@ -70,19 +74,15 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.o
             const os_name = app.type.name();
             try graphics.printf(allocator, "{s}", .{os_name});
 
-            const used = 24 + os_name.len;
+            const used = geo.columns / 3 * 2 + os_name.len;
             if (used < geo.columns) {
                 try graphics.print_spaces(geo.columns - used);
             }
 
             try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try graphics.printf(allocator, "\r\n", .{});
-        }
 
-        try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-        try graphics.printf(allocator, "\r\n", .{});
-        try graphics.print_spaces(instruction_pad);
-        try graphics.printf(allocator, "{s}\r\n", .{instruction});
+            row += 1;
+        }
 
         const events = [_]uefi.Event{con_in.wait_for_key};
         _ = try boot_services.waitForEvent(&events);
