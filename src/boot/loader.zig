@@ -70,8 +70,8 @@ pub const Loader = struct {
     }
 
     pub fn deinit(self: *Loader) void {
-        for (self.applications.items) |application| {
-            self.allocator.free(application.path);
+        for (self.applications.items) |app| {
+            self.allocator.free(app.path);
         }
 
         self.applications.deinit(self.allocator);

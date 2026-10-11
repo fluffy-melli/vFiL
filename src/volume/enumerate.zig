@@ -21,8 +21,8 @@ pub const Volume = struct {
     }
 
     pub fn deinit(self: *Volume) void {
-        for (self.applications.items) |application| {
-            self.allocator.free(application);
+        for (self.applications.items) |app| {
+            self.allocator.free(app);
         }
 
         self.applications.deinit(self.allocator);
