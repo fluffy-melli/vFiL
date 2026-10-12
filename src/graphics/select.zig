@@ -6,6 +6,34 @@ const graphics = @import("_.zig");
 
 const uefi = std.os.uefi;
 
+fn is_selectable(app: *const volume.Entry) bool {
+    return switch (app.bootloader) {
+        .Image => false,
+        else => true,
+    };
+}
+
+fn step(items: []const volume.Entry, from: usize, forward: bool) usize {
+    if (items.len == 0) {
+        return from;
+    }
+
+    var i = from;
+    for (0..items.len) |_| {
+        if (forward) {
+            i = (i + 1) % items.len;
+        } else {
+            i = (i + items.len - 1) % items.len;
+        }
+
+        if (is_selectable(&items[i])) {
+            return i;
+        }
+    }
+
+    return from;
+}
+
 pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
     if (applications.items.len == 0) {
         return uefi.Error.NotFound;
@@ -55,11 +83,13 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
 
     while (true) {
         var row: usize = 2;
-        var app_len: usize = applications.items.len - 1;
+        for (applications.items, 0..) |*app, i| {
+            if (!is_selectable(app)) {
+                continue;
+            }
 
-        for (applications.items, 0..) |app, i| {
             try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try con_out.setCursorPosition(36 - 3, row);
+            try con_out.setCursorPosition(geo.columns / 3 - 3, row);
 
             if (i == selected) {
                 try con_out.setAttribute(.{ .foreground = .white, .background = .blue });
@@ -73,19 +103,16 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
                 try graphics.print_spaces(3);
             }
 
-            var used: usize = 36 * 2;
+            var used: usize = geo.columns / 3 * 2;
             switch (app.bootloader) {
                 .Efi => |*efi| {
-                    used += efi.utf8_path.len + efi.part_uuid.len + 3;
-                    try graphics.printf(allocator, "{s} ({s})", .{ efi.utf8_path, efi.part_uuid });
+                    used += efi.utf8_path.len;
+                    try graphics.printf(allocator, "{s}", .{efi.utf8_path});
                 },
-                .Image => {
-                    app_len -= 1;
-                    continue;
-                },
+                .Image => unreachable,
                 .Kernel => |*kernel| {
-                    used += kernel.utf8_path.len + kernel.part_uuid.len + 3;
-                    try graphics.printf(allocator, "{s} ({s})", .{ kernel.utf8_path, kernel.part_uuid });
+                    used += kernel.utf8_path.len;
+                    try graphics.printf(allocator, "{s}", .{kernel.utf8_path});
                 },
             }
 
@@ -103,22 +130,14 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
 
         const key = try con_in.readKeyStroke();
 
-        if (key.scan_code == 0x01) {
-            if (selected == 0) {
-                selected = app_len;
-                continue;
-            }
-
-            selected -= 1;
-        }
-
-        if (key.scan_code == 0x02) {
-            if (selected >= app_len) {
-                selected = 0;
-                continue;
-            }
-
-            selected += 1;
+        switch (key.scan_code) {
+            0x01 => {
+                selected = step(applications.items, selected, false);
+            },
+            0x02 => {
+                selected = step(applications.items, selected, true);
+            },
+            else => {},
         }
 
         if (key.unicode_char == 0x000D) {
