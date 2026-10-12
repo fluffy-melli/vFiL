@@ -6,8 +6,9 @@ const volume = @import("_.zig");
 const uefi = std.os.uefi;
 const File = uefi.protocol.File;
 const FileInfo = File.Info.File;
+const DevicePathProtocol = uefi.protocol.DevicePath;
 
-pub fn scan(vol: *volume.Volume, prefix: []const u16, dir: *File, depth: usize) uefi.Error!void {
+pub fn scan(allocator: std.mem.Allocator, handle: uefi.Handle, entrys: *std.ArrayList(volume.Entry), prefix: []const u16, dir: *File, max_depth: usize, depth: usize, check_kernel: bool) uefi.Error!void {
     var buffer: [2048]u8 align(@alignOf(FileInfo)) = undefined;
 
     dir.setPosition(0) catch {
@@ -28,26 +29,31 @@ pub fn scan(vol: *volume.Volume, prefix: []const u16, dir: *File, depth: usize) 
         }
 
         if (!info.attribute.directory) {
-            const full_filename = try utils.unicode.utf16_join_path(vol.allocator, prefix, filename);
-            errdefer vol.allocator.free(full_filename);
+            const full_filename = try utils.unicode.utf16_join_path(allocator, prefix, filename);
+            defer allocator.free(full_filename);
 
-            vol.applications.append(vol.allocator, full_filename) catch {
+            var entry = volume.Entry.init(allocator, handle, dir, full_filename, check_kernel) catch {
+                continue;
+            };
+
+            entrys.append(allocator, entry) catch {
+                entry.deinit();
                 return uefi.Error.OutOfResources;
             };
 
             continue;
         }
 
-        if (depth >= 5) {
+        if (depth >= max_depth) {
             continue;
         }
 
-        const full_prefix = try utils.unicode.utf16_join_path(vol.allocator, prefix, filename);
-        defer vol.allocator.free(full_prefix);
+        const full_prefix = try utils.unicode.utf16_join_path(allocator, prefix, filename);
+        defer allocator.free(full_prefix);
 
         const sub_dir = try dir.open(filename, .read, .{});
         defer _ = sub_dir.close() catch {};
 
-        try scan(vol, full_prefix, sub_dir, depth + 1);
+        try scan(allocator, handle, entrys, full_prefix, sub_dir, max_depth, depth + 1, check_kernel);
     }
 }

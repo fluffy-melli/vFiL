@@ -17,8 +17,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    const decide = b.addModule("decide", .{
-        .root_source_file = b.path("src/decide/_.zig"),
+    const volume = b.addModule("volume", .{
+        .root_source_file = b.path("src/volume/_.zig"),
         .optimize = optimize,
         .target = target,
         .imports = &.{
@@ -26,13 +26,13 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const volume = b.addModule("volume", .{
-        .root_source_file = b.path("src/volume/_.zig"),
+    const graphics = b.addModule("graphics", .{
+        .root_source_file = b.path("src/graphics/_.zig"),
         .optimize = optimize,
         .target = target,
         .imports = &.{
             .{ .name = "utils", .module = utils },
-            .{ .name = "decide", .module = decide },
+            .{ .name = "volume", .module = volume },
         },
     });
 
@@ -42,20 +42,13 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "utils", .module = utils },
-            .{ .name = "decide", .module = decide },
             .{ .name = "volume", .module = volume },
+            .{ .name = "graphics", .module = graphics },
         },
     });
 
-    const graphics = b.addModule("graphics", .{
-        .root_source_file = b.path("src/graphics/_.zig"),
-        .optimize = optimize,
-        .target = target,
-        .imports = &.{
-            .{ .name = "boot", .module = boot },
-            .{ .name = "utils", .module = utils },
-            .{ .name = "decide", .module = decide },
-        },
+    boot.addAnonymousImport("ext4_x64", .{
+        .root_source_file = b.path("asset/ext4_x64.efi"),
     });
 
     const exe = b.addExecutable(.{
@@ -67,6 +60,7 @@ pub fn build(b: *std.Build) void {
             .strip = true,
             .imports = &.{
                 .{ .name = "boot", .module = boot },
+                .{ .name = "utils", .module = utils },
                 .{ .name = "graphics", .module = graphics },
             },
         }),

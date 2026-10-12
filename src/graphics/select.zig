@@ -1,12 +1,12 @@
 const std = @import("std");
 const utils = @import("utils");
-const decide = @import("decide");
+const volume = @import("volume");
 
 const graphics = @import("_.zig");
 
 const uefi = std.os.uefi;
 
-pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.os.Table)) uefi.Error!usize {
+pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
     if (applications.items.len == 0) {
         return uefi.Error.NotFound;
     }
@@ -55,9 +55,11 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.o
 
     while (true) {
         var row: usize = 2;
+        var app_len: usize = applications.items.len - 1;
+
         for (applications.items, 0..) |app, i| {
             try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try con_out.setCursorPosition(geo.columns / 3 - 3, row);
+            try con_out.setCursorPosition(36 - 3, row);
 
             if (i == selected) {
                 try con_out.setAttribute(.{ .foreground = .white, .background = .blue });
@@ -71,10 +73,22 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.o
                 try graphics.print_spaces(3);
             }
 
-            const os_name = app.type.name();
-            try graphics.printf(allocator, "{s}", .{os_name});
+            var used: usize = 36 * 2;
+            switch (app.bootloader) {
+                .Efi => |*efi| {
+                    used += efi.utf8_path.len + efi.part_uuid.len + 3;
+                    try graphics.printf(allocator, "{s} ({s})", .{ efi.utf8_path, efi.part_uuid });
+                },
+                .Image => {
+                    app_len -= 1;
+                    continue;
+                },
+                .Kernel => |*kernel| {
+                    used += kernel.utf8_path.len + kernel.part_uuid.len + 3;
+                    try graphics.printf(allocator, "{s} ({s})", .{ kernel.utf8_path, kernel.part_uuid });
+                },
+            }
 
-            const used = geo.columns / 3 * 2 + os_name.len;
             if (used < geo.columns) {
                 try graphics.print_spaces(geo.columns - used);
             }
@@ -91,7 +105,7 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.o
 
         if (key.scan_code == 0x01) {
             if (selected == 0) {
-                selected = applications.items.len - 1;
+                selected = app_len;
                 continue;
             }
 
@@ -99,7 +113,7 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(decide.o
         }
 
         if (key.scan_code == 0x02) {
-            if (selected >= applications.items.len - 1) {
+            if (selected >= app_len) {
                 selected = 0;
                 continue;
             }
