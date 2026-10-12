@@ -2,8 +2,8 @@ const std = @import("std");
 
 const uefi = std.os.uefi;
 
-pub fn utf8_to_utf16(allocator: std.mem.Allocator, utf8: []const u8) uefi.Error![]u16 {
-    return std.unicode.utf8ToUtf16LeAlloc(allocator, utf8) catch {
+pub fn utf8_to_utf16(allocator: std.mem.Allocator, utf8: []const u8) uefi.Error![:0]u16 {
+    return std.unicode.utf8ToUtf16LeAllocZ(allocator, utf8) catch {
         return uefi.Error.InvalidParameter;
     };
 }
