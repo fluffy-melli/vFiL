@@ -1,7 +1,6 @@
 const std = @import("std");
 const utils = @import("utils");
 const volume = @import("volume");
-
 const graphics = @import("_.zig");
 
 const uefi = std.os.uefi;
@@ -34,11 +33,7 @@ fn step(items: []const volume.Entry, from: usize, forward: bool) usize {
     return from;
 }
 
-pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
-    if (applications.items.len == 0) {
-        return uefi.Error.NotFound;
-    }
-
+pub fn select(applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
     const system_table = uefi.system_table;
 
     const con_out = system_table.con_out orelse {
@@ -55,31 +50,34 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
 
     const geo = try con_out.queryMode(con_out.mode.mode);
 
-    const title = "Select an operating system to boot:";
-    var title_pad: usize = 0;
-
-    if (geo.columns > title.len) {
-        title_pad = (geo.columns - title.len) / 2;
-    }
-
-    const instruction = "Use Up/Down to select, Enter to boot.";
-    var instruction_pad: usize = 0;
-
-    if (geo.columns > instruction.len) {
-        instruction_pad = (geo.columns - instruction.len) / 2;
-    }
-
     var selected: usize = 0;
 
     try graphics.clear();
 
+    const value_pad: usize = geo.columns / 3;
+    const arrow_msg = std.unicode.utf8ToUtf16LeStringLiteral(" > ");
+
+    var title_pad: usize = 0;
+    const title_msg = std.unicode.utf8ToUtf16LeStringLiteral(" Select an operating system to boot: ");
+
+    if (geo.columns > title_msg.len) {
+        title_pad = (geo.columns - title_msg.len) / 2;
+    }
+
     try con_out.setAttribute(.{ .foreground = .white, .background = .black });
-    try con_out.setCursorPosition(title_pad - 1, 0);
-    try graphics.printf(allocator, " {s} ", .{title});
+    try con_out.setCursorPosition(title_pad, 0);
+    _ = try con_out.outputString(title_msg.ptr);
+
+    var instruction_pad: usize = 0;
+    const instruction_msg = std.unicode.utf8ToUtf16LeStringLiteral(" Use Up/Down to select, Enter to boot. ");
+
+    if (geo.columns > instruction_msg.len) {
+        instruction_pad = (geo.columns - instruction_msg.len) / 2;
+    }
 
     try con_out.setAttribute(.{ .foreground = .yellow, .background = .black });
-    try con_out.setCursorPosition(instruction_pad - 1, geo.rows - 1);
-    try graphics.printf(allocator, " {s} ", .{instruction});
+    try con_out.setCursorPosition(instruction_pad, geo.rows - 1);
+    _ = try con_out.outputString(instruction_msg.ptr);
 
     while (true) {
         var row: usize = 2;
@@ -89,7 +87,7 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
             }
 
             try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try con_out.setCursorPosition(geo.columns / 3 - 3, row);
+            try con_out.setCursorPosition(value_pad - 3, row);
 
             if (i == selected) {
                 try con_out.setAttribute(.{ .foreground = .white, .background = .blue });
@@ -98,26 +96,28 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
             }
 
             if (i == selected) {
-                try graphics.printf(allocator, " > ", .{});
+                _ = try con_out.outputString(arrow_msg.ptr);
             } else {
-                try graphics.print_spaces(3);
+                for (0..3) |_| {
+                    _ = try con_out.outputString(&.{ ' ', 0 });
+                }
             }
 
-            var used: usize = geo.columns / 3 * 2;
+            var used: usize = value_pad * 2;
             switch (app.bootloader) {
                 .Efi => |*efi| {
-                    used += efi.utf8_path.len;
-                    try graphics.printf(allocator, "{s}", .{efi.utf8_path});
+                    used += efi.path.len;
+                    _ = try con_out.outputString(efi.path.ptr);
                 },
                 .Image => unreachable,
                 .Kernel => |*kernel| {
-                    used += kernel.utf8_path.len;
-                    try graphics.printf(allocator, "{s}", .{kernel.utf8_path});
+                    used += kernel.path.len;
+                    _ = try con_out.outputString(kernel.path.ptr);
                 },
             }
 
-            if (used < geo.columns) {
-                try graphics.print_spaces(geo.columns - used);
+            for (0..geo.columns - used) |_| {
+                _ = try con_out.outputString(&.{ ' ', 0 });
             }
 
             try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
@@ -141,7 +141,6 @@ pub fn select(allocator: std.mem.Allocator, applications: std.ArrayList(volume.E
         }
 
         if (key.unicode_char == 0x000D) {
-            try con_out.setAttribute(.{ .foreground = .white, .background = .black });
             try graphics.clear();
 
             return selected;
