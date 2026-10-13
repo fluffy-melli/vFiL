@@ -43,7 +43,6 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "utils", .module = utils },
             .{ .name = "volume", .module = volume },
-            .{ .name = "graphics", .module = graphics },
         },
     });
 
@@ -60,7 +59,6 @@ pub fn build(b: *std.Build) void {
             .strip = true,
             .imports = &.{
                 .{ .name = "boot", .module = boot },
-                .{ .name = "utils", .module = utils },
                 .{ .name = "graphics", .module = graphics },
             },
         }),
