@@ -1,18 +1,22 @@
 const std = @import("std");
-const utils = @import("utils");
+const utils = @import("_.zig");
 
 const uefi = std.os.uefi;
 const File = uefi.protocol.File;
 
-pub fn base_name(path: []const u8) []const u8 {
-    const idx = std.mem.lastIndexOfAny(u8, path, "\\/") orelse {
-        return path;
-    };
+pub fn base_name(path: [:0]const u16) [:0]const u16 {
+    var i = path.len;
 
-    return path[idx + 1 ..];
+    while (i > 0) : (i -= 1) {
+        if (path[i - 1] == '\\' or path[i - 1] == '/') {
+            return path[i..];
+        }
+    }
+
+    return path;
 }
 
-pub fn is_dot(name: []const u16) bool {
+pub fn is_dot(name: [:0]const u16) bool {
     if (name.len == 0 or name.len > 3) {
         return false;
     }
@@ -28,7 +32,7 @@ pub fn is_dot(name: []const u16) bool {
     return false;
 }
 
-pub fn is_efi(name: []const u16) bool {
+pub fn is_efi(name: [:0]const u16) bool {
     if (name.len < 4) {
         return false;
     }
@@ -41,7 +45,7 @@ pub fn is_efi(name: []const u16) bool {
         (ext[3] == 'i' or ext[3] == 'I');
 }
 
-pub fn is_img(name: []const u16) bool {
+pub fn is_img(name: [:0]const u16) bool {
     if (name.len < 4) {
         return false;
     }
@@ -54,20 +58,17 @@ pub fn is_img(name: []const u16) bool {
         (ext[3] == 'g' or ext[3] == 'G');
 }
 
-pub fn is_initrd(path: []const u8) bool {
+pub fn is_initrd(path: [:0]const u16) bool {
     const name = base_name(path);
 
-    return std.mem.startsWith(u8, name, "initramfs") or std.mem.startsWith(u8, name, "initrd");
+    const initrd = std.unicode.utf8ToUtf16LeStringLiteral("initrd");
+    const initramfs = std.unicode.utf8ToUtf16LeStringLiteral("initramfs");
+
+    return utils.unicode.utf16_starts_with_ignore_case(name, initrd) or utils.unicode.utf16_starts_with_ignore_case(name, initramfs);
 }
 
-pub fn is_kernel(allocator: std.mem.Allocator, dir: *File, path: []const u16) uefi.Error!bool {
-    const file_path = allocator.allocSentinel(u16, path.len, 0) catch {
-        return uefi.Error.OutOfResources;
-    };
-
-    @memcpy(file_path, path);
-
-    const file = try dir.open(file_path, .read, .{});
+pub fn is_kernel(dir: *File, path: [:0]const u16) uefi.Error!bool {
+    const file = try dir.open(path, .read, .{});
     defer _ = file.close() catch {};
 
     var buffer: [520]u8 = undefined;

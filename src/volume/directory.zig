@@ -8,7 +8,7 @@ const File = uefi.protocol.File;
 const FileInfo = File.Info.File;
 const DevicePathProtocol = uefi.protocol.DevicePath;
 
-pub fn scan(allocator: std.mem.Allocator, handle: uefi.Handle, entrys: *std.ArrayList(volume.Entry), prefix: []const u16, dir: *File, max_depth: usize, depth: usize, check_kernel: bool) uefi.Error!void {
+pub fn scan(allocator: std.mem.Allocator, handle: uefi.Handle, entrys: *std.ArrayList(volume.Entry), prefix: [:0]const u16, dir: *File, max_depth: usize, depth: usize, check_kernel: bool) uefi.Error!void {
     var buffer: [2048]u8 align(@alignOf(FileInfo)) = undefined;
 
     dir.setPosition(0) catch {
@@ -29,10 +29,9 @@ pub fn scan(allocator: std.mem.Allocator, handle: uefi.Handle, entrys: *std.Arra
         }
 
         if (!info.attribute.directory) {
-            const full_filename = try utils.unicode.utf16_join_path(allocator, prefix, filename);
-            defer allocator.free(full_filename);
+            const fullname = try utils.unicode.utf16_join_path(allocator, prefix, filename);
 
-            var entry = volume.Entry.init(allocator, handle, dir, full_filename, check_kernel) catch {
+            var entry = volume.Entry.init(allocator, handle, dir, fullname, check_kernel) catch {
                 continue;
             };
 
