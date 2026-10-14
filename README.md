@@ -29,6 +29,8 @@ sudo cp ./BOOTX64.efi /mnt/EFI/BOOT/BOOTX64.efi
 sudo umount /mnt
 ```
 
+---
+
 ### Build From Source
 
 > [!WARNING]
@@ -43,6 +45,8 @@ git clone https://github.com/fluffy-melli/vFiL
 cd vFiL
 zig build
 ```
+
+---
 
 ### Third Party
 
