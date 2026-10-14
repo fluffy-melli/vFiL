@@ -30,13 +30,14 @@ pub fn scan(allocator: std.mem.Allocator, handle: uefi.Handle, entrys: *std.Arra
 
         if (!info.attribute.directory) {
             const fullname = try utils.unicode.utf16_join_path(allocator, prefix, filename);
+            defer allocator.free(fullname);
 
             var entry = volume.Entry.init(allocator, handle, dir, fullname, check_kernel) catch {
                 continue;
             };
+            errdefer entry.deinit();
 
             entrys.append(allocator, entry) catch {
-                entry.deinit();
                 return uefi.Error.OutOfResources;
             };
 

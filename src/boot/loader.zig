@@ -144,19 +144,9 @@ pub const Loader = struct {
         defer self.boot_service.freePool(@ptrCast(@alignCast(handles.ptr))) catch {};
 
         for (handles) |handle| {
-            var vol = volume.Volume.init(self.allocator, handle);
-
-            vol.scan() catch {
-                vol.deinit();
+            volume.scan(self.allocator, &self.applications, handle) catch {
                 continue;
             };
-
-            for (vol.applications.items) |*app| {
-                self.applications.append(self.allocator, app.*) catch |err| {
-                    defer vol.deinit();
-                    return try self.show_error("out of memory while registering boot entries", err);
-                };
-            }
         }
 
         if (self.applications.items.len == 0) {

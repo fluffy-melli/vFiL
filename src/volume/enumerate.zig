@@ -194,22 +194,26 @@ pub const Entry = struct {
     },
 
     pub fn init(allocator: std.mem.Allocator, handle: uefi.Handle, dir: *File, path: [:0]const u16, check_kernel: bool) uefi.Error!Entry {
-        const is_efi = utils.extension.is_efi(path);
+        const file_path = allocator.dupeZ(u16, path) catch {
+            return uefi.Error.OutOfResources;
+        };
+
+        const is_efi = utils.extension.is_efi(file_path);
         if (is_efi) {
             return .{
                 .type = .Efi,
                 .bootloader = .{
-                    .Efi = try Efi.init(allocator, handle, dir, path),
+                    .Efi = try Efi.init(allocator, handle, dir, file_path),
                 },
             };
         }
 
-        const is_image = utils.extension.is_img(path);
+        const is_image = utils.extension.is_img(file_path);
         if (is_image) {
             return .{
                 .type = .Image,
                 .bootloader = .{
-                    .Image = try Image.init(allocator, handle, dir, path),
+                    .Image = try Image.init(allocator, handle, dir, file_path),
                 },
             };
         }
@@ -218,12 +222,12 @@ pub const Entry = struct {
             return uefi.Error.InvalidParameter;
         }
 
-        const is_kernel = try utils.extension.is_kernel(dir, path);
+        const is_kernel = try utils.extension.is_kernel(dir, file_path);
         if (is_kernel) {
             return .{
                 .type = .Kernel,
                 .bootloader = .{
-                    .Kernel = try Kernel.init(allocator, handle, dir, path),
+                    .Kernel = try Kernel.init(allocator, handle, dir, file_path),
                 },
             };
         }
@@ -264,60 +268,37 @@ pub const Entry = struct {
     }
 };
 
-pub const Volume = struct {
-    allocator: std.mem.Allocator,
+pub fn scan(allocator: std.mem.Allocator, applications: *std.ArrayList(Entry), handle: uefi.Handle) uefi.Error!void {
+    const system_table = uefi.system_table;
 
-    handle: uefi.Handle,
-    applications: std.ArrayList(Entry),
+    const boot_service = system_table.boot_services orelse {
+        return uefi.Error.Unsupported;
+    };
 
-    pub fn init(allocator: std.mem.Allocator, handle: uefi.Handle) Volume {
-        return Volume{
-            .allocator = allocator,
-            .handle = handle,
-            .applications = .empty,
-        };
+    const fs = try boot_service.openProtocol(SimpleFileSystem, handle, .{ .by_handle_protocol = .{} }) orelse {
+        return uefi.Error.DeviceError;
+    };
+
+    const root_dir = fs.openVolume() catch {
+        return uefi.Error.DeviceError;
+    };
+    defer root_dir.close() catch {};
+
+    volume.directory.scan(allocator, handle, applications, &.{}, root_dir, 1, 0, false) catch {};
+
+    const efi_path = std.unicode.utf8ToUtf16LeStringLiteral("\\EFI");
+
+    if (root_dir.open(efi_path, .read, .{}) catch null) |efi_dir| {
+        defer efi_dir.close() catch {};
+
+        try volume.directory.scan(allocator, handle, applications, efi_path, efi_dir, 3, 0, false);
     }
 
-    pub fn deinit(self: *Volume) void {
-        for (self.applications.items) |*app| {
-            app.deinit();
-        }
+    const boot_path = std.unicode.utf8ToUtf16LeStringLiteral("\\boot");
 
-        self.applications.deinit(self.allocator);
+    if (root_dir.open(boot_path, .read, .{}) catch null) |boot_dir| {
+        defer boot_dir.close() catch {};
+
+        try volume.directory.scan(allocator, handle, applications, boot_path, boot_dir, 1, 0, true);
     }
-
-    pub fn scan(self: *Volume) uefi.Error!void {
-        const system_table = uefi.system_table;
-
-        const boot_service = system_table.boot_services orelse {
-            return uefi.Error.Unsupported;
-        };
-
-        const fs = try boot_service.openProtocol(SimpleFileSystem, self.handle, .{ .by_handle_protocol = .{} }) orelse {
-            return uefi.Error.DeviceError;
-        };
-
-        const root_dir = fs.openVolume() catch {
-            return uefi.Error.DeviceError;
-        };
-        defer root_dir.close() catch {};
-
-        volume.directory.scan(self.allocator, self.handle, &self.applications, &.{}, root_dir, 1, 0, false) catch {};
-
-        const efi_path = std.unicode.utf8ToUtf16LeStringLiteral("\\EFI");
-
-        if (root_dir.open(efi_path, .read, .{}) catch null) |efi_dir| {
-            defer efi_dir.close() catch {};
-
-            try volume.directory.scan(self.allocator, self.handle, &self.applications, efi_path, efi_dir, 3, 0, false);
-        }
-
-        const boot_path = std.unicode.utf8ToUtf16LeStringLiteral("\\boot");
-
-        if (root_dir.open(boot_path, .read, .{}) catch null) |boot_dir| {
-            defer boot_dir.close() catch {};
-
-            try volume.directory.scan(self.allocator, self.handle, &self.applications, boot_path, boot_dir, 1, 0, true);
-        }
-    }
-};
+}
