@@ -35,8 +35,12 @@ fn step(items: []const volume.Entry, from: usize, forward: bool) usize {
     return from;
 }
 
-pub fn select(service: system.Service, applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
+pub fn select(service: system.Service, applications: std.ArrayList(volume.Entry), booted: usize) uefi.Error!usize {
     var selected: usize = 0;
+
+    if (booted != std.math.maxInt(usize)) {
+        selected = booted;
+    }
 
     try graphics.clear(service);
 

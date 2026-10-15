@@ -10,8 +10,8 @@ pub fn main() uefi.Error!void {
     var loader = try boot.Loader.init(allocator);
     defer loader.deinit();
 
-    try loader.bootstrap();
+    const booted = try loader.bootstrap();
 
-    const selected = try graphics.select(loader.service, loader.applications);
-    try loader.boot(selected);
+    const selected = try graphics.select(loader.service, loader.applications, booted);
+    try loader.boot(booted, selected);
 }

@@ -4,6 +4,8 @@ const uefi = std.os.uefi;
 
 pub const Service = struct {
     boot: *uefi.tables.BootServices,
+    runtime: *uefi.tables.RuntimeServices,
+
     system_table: *uefi.tables.SystemTable,
 
     con_out: *uefi.protocol.SimpleTextOutput,
@@ -29,8 +31,9 @@ pub const Service = struct {
         const geo = try con_out.queryMode(con_out.mode.mode);
 
         return .{
-            .system_table = system_table,
             .boot = boot_service,
+            .runtime = system_table.runtime_services,
+            .system_table = system_table,
             .con_out = con_out,
             .con_in = con_in,
             .geo = geo,

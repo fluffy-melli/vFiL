@@ -111,13 +111,17 @@ pub const Loader = struct {
         }
     }
 
-    pub fn bootstrap(self: *Loader) uefi.Error!void {
+    pub fn bootstrap(self: *Loader) uefi.Error!usize {
         try self.load_ext4_driver();
 
+        const max = std.math.maxInt(usize);
+
         const handles = self.service.boot.locateHandleBuffer(.{ .by_protocol = &SimpleFileSystem.guid }) catch |err| {
-            return try self.show_error("failed to query filesystem handles", err);
+            try self.show_error("failed to query filesystem handles", err);
+            return max;
         } orelse {
-            return try self.show_error("no filesystem found on any device", uefi.Error.NotFound);
+            try self.show_error("no filesystem found on any device", uefi.Error.NotFound);
+            return max;
         };
 
         defer self.service.boot.freePool(@ptrCast(@alignCast(handles.ptr))) catch {};
@@ -129,12 +133,56 @@ pub const Loader = struct {
         }
 
         if (self.applications.items.len == 0) {
-            return try self.show_error("no bootable entry found on any volume", error.BootImageNotFound);
+            try self.show_error("no bootable entry found on any volume", error.BootImageNotFound);
+            return max;
         }
+
+        const last_boot_state_name = std.unicode.utf8ToUtf16LeStringLiteral("LastBooted");
+
+        const buffer = system.nvram.creaft_buffer(self.allocator, self.service, last_boot_state_name) catch {
+            return max;
+        } orelse {
+            return max;
+        };
+        defer self.allocator.free(buffer);
+
+        const value = system.nvram.read(self.service, buffer, last_boot_state_name) catch {
+            return max;
+        } orelse {
+            return max;
+        };
+
+        if (value.len != 2) {
+            return max;
+        }
+
+        if (self.applications.items.len != @as(usize, value[0])) {
+            return max;
+        }
+
+        const booted = @as(usize, value[1]);
+
+        return booted;
     }
 
-    pub fn boot(self: *Loader, selected: usize) uefi.Error!void {
+    pub fn boot(self: *Loader, booted: usize, selected: usize) uefi.Error!void {
         var app = self.applications.items[selected];
+
+        if (booted != selected) {
+            const last_boot_state_name = std.unicode.utf8ToUtf16LeStringLiteral("LastBooted");
+
+            const u8_app_len = std.math.cast(u8, self.applications.items.len) orelse {
+                return try self.show_error("too many boot entries", error.Overflow);
+            };
+
+            const u8_selected = std.math.cast(u8, selected) orelse {
+                return try self.show_error("too many boot entries", error.Overflow);
+            };
+
+            const value: [2]u8 = .{ u8_app_len, u8_selected };
+
+            system.nvram.write(self.service, last_boot_state_name, &value) catch {};
+        }
 
         switch (app.bootloader) {
             .Efi => {
