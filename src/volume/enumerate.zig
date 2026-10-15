@@ -1,5 +1,7 @@
 const std = @import("std");
 const utils = @import("utils");
+const system = @import("system");
+
 const volume = @import("_.zig");
 
 const uefi = std.os.uefi;
@@ -18,20 +20,16 @@ pub const Type = enum {
 pub const Efi = struct {
     allocator: std.mem.Allocator,
 
+    service: system.Service,
+
     dir: *File,
     path: [:0]const u16,
     device_path: *const DevicePathProtocol,
 
     part_uuid: []const u8,
 
-    pub fn init(allocator: std.mem.Allocator, handle: uefi.Handle, dir: *File, path: [:0]const u16) uefi.Error!Efi {
-        const system_table = uefi.system_table;
-
-        const boot_service = system_table.boot_services orelse {
-            return uefi.Error.Unsupported;
-        };
-
-        const device_path = try boot_service.openProtocol(DevicePathProtocol, handle, .{ .by_handle_protocol = .{} }) orelse {
+    pub fn init(allocator: std.mem.Allocator, service: system.Service, handle: uefi.Handle, dir: *File, path: [:0]const u16) uefi.Error!Efi {
+        const device_path = try service.boot.openProtocol(DevicePathProtocol, handle, .{ .by_handle_protocol = .{} }) orelse {
             return uefi.Error.DeviceError;
         };
 
@@ -39,6 +37,7 @@ pub const Efi = struct {
 
         return .{
             .allocator = allocator,
+            .service = service,
             .dir = dir,
             .path = path,
             .device_path = device_path,
@@ -52,24 +51,18 @@ pub const Efi = struct {
     }
 
     pub fn boot(self: *Efi) uefi.Error!ImageExitData {
-        const system_table = uefi.system_table;
-
-        const boot_service = system_table.boot_services orelse {
-            return uefi.Error.Unsupported;
-        };
-
         const file_device_path = self.device_path.createFileDevicePath(self.allocator, self.path) catch {
             return uefi.Error.OutOfResources;
         };
 
-        const image_handle = boot_service.loadImage(false, uefi.handle, .{ .device_path = file_device_path }) catch |err| {
+        const image_handle = self.service.boot.loadImage(false, uefi.handle, .{ .device_path = file_device_path }) catch |err| {
             self.allocator.destroy(file_device_path);
             return err;
         };
 
         self.allocator.destroy(file_device_path);
 
-        return try boot_service.startImage(image_handle);
+        return try self.service.boot.startImage(image_handle);
     }
 };
 
@@ -83,14 +76,8 @@ pub const Image = struct {
 
     part_uuid: []const u8,
 
-    pub fn init(allocator: std.mem.Allocator, handle: uefi.Handle, dir: *File, path: [:0]const u16) uefi.Error!Image {
-        const system_table = uefi.system_table;
-
-        const boot_service = system_table.boot_services orelse {
-            return uefi.Error.Unsupported;
-        };
-
-        const device_path = try boot_service.openProtocol(DevicePathProtocol, handle, .{ .by_handle_protocol = .{} }) orelse {
+    pub fn init(allocator: std.mem.Allocator, service: system.Service, handle: uefi.Handle, dir: *File, path: [:0]const u16) uefi.Error!Image {
+        const device_path = try service.boot.openProtocol(DevicePathProtocol, handle, .{ .by_handle_protocol = .{} }) orelse {
             return uefi.Error.DeviceError;
         };
 
@@ -121,20 +108,16 @@ pub const Image = struct {
 pub const Kernel = struct {
     allocator: std.mem.Allocator,
 
+    service: system.Service,
+
     dir: *File,
     path: [:0]const u16,
     device_path: *const DevicePathProtocol,
 
     part_uuid: []const u8,
 
-    pub fn init(allocator: std.mem.Allocator, handle: uefi.Handle, dir: *File, path: [:0]const u16) uefi.Error!Kernel {
-        const system_table = uefi.system_table;
-
-        const boot_service = system_table.boot_services orelse {
-            return uefi.Error.Unsupported;
-        };
-
-        const device_path = try boot_service.openProtocol(DevicePathProtocol, handle, .{ .by_handle_protocol = .{} }) orelse {
+    pub fn init(allocator: std.mem.Allocator, service: system.Service, handle: uefi.Handle, dir: *File, path: [:0]const u16) uefi.Error!Kernel {
+        const device_path = try service.boot.openProtocol(DevicePathProtocol, handle, .{ .by_handle_protocol = .{} }) orelse {
             return uefi.Error.DeviceError;
         };
 
@@ -142,6 +125,7 @@ pub const Kernel = struct {
 
         return .{
             .allocator = allocator,
+            .service = service,
             .dir = dir,
             .path = path,
             .device_path = device_path,
@@ -155,33 +139,27 @@ pub const Kernel = struct {
     }
 
     pub fn boot(self: *Kernel, cmdline: [:0]const u16) uefi.Error!ImageExitData {
-        const system_table = uefi.system_table;
-
-        const boot_service = system_table.boot_services orelse {
-            return uefi.Error.Unsupported;
-        };
-
         const file_device_path = self.device_path.createFileDevicePath(self.allocator, self.path) catch {
             return uefi.Error.OutOfResources;
         };
 
-        const image_handle = boot_service.loadImage(false, uefi.handle, .{ .device_path = file_device_path }) catch |err| {
+        const image_handle = self.service.boot.loadImage(false, uefi.handle, .{ .device_path = file_device_path }) catch |err| {
             self.allocator.destroy(file_device_path);
             return err;
         };
 
         self.allocator.destroy(file_device_path);
 
-        errdefer _ = boot_service.unloadImage(image_handle) catch {};
+        errdefer _ = self.service.boot.unloadImage(image_handle) catch {};
 
-        const loaded_image = try boot_service.openProtocol(LoadedImage, image_handle, .{ .by_handle_protocol = .{} }) orelse {
+        const loaded_image = try self.service.boot.openProtocol(LoadedImage, image_handle, .{ .by_handle_protocol = .{} }) orelse {
             return uefi.Error.Unsupported;
         };
 
         loaded_image.load_options = @ptrCast(@constCast(cmdline.ptr));
         loaded_image.load_options_size = @intCast((cmdline.len + 1) * @sizeOf(u16));
 
-        return try boot_service.startImage(image_handle);
+        return try self.service.boot.startImage(image_handle);
     }
 };
 
@@ -193,7 +171,7 @@ pub const Entry = struct {
         Kernel: Kernel,
     },
 
-    pub fn init(allocator: std.mem.Allocator, handle: uefi.Handle, dir: *File, path: [:0]const u16, check_kernel: bool) uefi.Error!Entry {
+    pub fn init(allocator: std.mem.Allocator, service: system.Service, handle: uefi.Handle, dir: *File, path: [:0]const u16, check_kernel: bool) uefi.Error!Entry {
         const file_path = allocator.dupeZ(u16, path) catch {
             return uefi.Error.OutOfResources;
         };
@@ -203,7 +181,7 @@ pub const Entry = struct {
             return .{
                 .type = .Efi,
                 .bootloader = .{
-                    .Efi = try Efi.init(allocator, handle, dir, file_path),
+                    .Efi = try Efi.init(allocator, service, handle, dir, file_path),
                 },
             };
         }
@@ -213,7 +191,7 @@ pub const Entry = struct {
             return .{
                 .type = .Image,
                 .bootloader = .{
-                    .Image = try Image.init(allocator, handle, dir, file_path),
+                    .Image = try Image.init(allocator, service, handle, dir, file_path),
                 },
             };
         }
@@ -227,7 +205,7 @@ pub const Entry = struct {
             return .{
                 .type = .Kernel,
                 .bootloader = .{
-                    .Kernel = try Kernel.init(allocator, handle, dir, file_path),
+                    .Kernel = try Kernel.init(allocator, service, handle, dir, file_path),
                 },
             };
         }
@@ -268,7 +246,7 @@ pub const Entry = struct {
     }
 };
 
-pub fn scan(allocator: std.mem.Allocator, applications: *std.ArrayList(Entry), handle: uefi.Handle) uefi.Error!void {
+pub fn scan(allocator: std.mem.Allocator, service: system.Service, applications: *std.ArrayList(Entry), handle: uefi.Handle) uefi.Error!void {
     const system_table = uefi.system_table;
 
     const boot_service = system_table.boot_services orelse {
@@ -284,14 +262,14 @@ pub fn scan(allocator: std.mem.Allocator, applications: *std.ArrayList(Entry), h
     };
     defer root_dir.close() catch {};
 
-    volume.directory.scan(allocator, handle, applications, &.{}, root_dir, 1, 0, false) catch {};
+    volume.directory.scan(allocator, service, handle, applications, &.{}, root_dir, 1, 0, false) catch {};
 
     const efi_path = std.unicode.utf8ToUtf16LeStringLiteral("\\EFI");
 
     if (root_dir.open(efi_path, .read, .{}) catch null) |efi_dir| {
         defer efi_dir.close() catch {};
 
-        try volume.directory.scan(allocator, handle, applications, efi_path, efi_dir, 3, 0, false);
+        try volume.directory.scan(allocator, service, handle, applications, efi_path, efi_dir, 3, 0, false);
     }
 
     const boot_path = std.unicode.utf8ToUtf16LeStringLiteral("\\boot");
@@ -299,6 +277,6 @@ pub fn scan(allocator: std.mem.Allocator, applications: *std.ArrayList(Entry), h
     if (root_dir.open(boot_path, .read, .{}) catch null) |boot_dir| {
         defer boot_dir.close() catch {};
 
-        try volume.directory.scan(allocator, handle, applications, boot_path, boot_dir, 1, 0, true);
+        try volume.directory.scan(allocator, service, handle, applications, boot_path, boot_dir, 1, 0, true);
     }
 }

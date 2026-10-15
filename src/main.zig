@@ -6,13 +6,12 @@ const uefi = std.os.uefi;
 
 pub fn main() uefi.Error!void {
     const allocator = uefi.pool_allocator;
-    const system_table = uefi.system_table;
 
-    var loader = try boot.Loader.init(allocator, system_table);
+    var loader = try boot.Loader.init(allocator);
     defer loader.deinit();
 
     try loader.bootstrap();
 
-    const selected = try graphics.select(loader.applications);
+    const selected = try graphics.select(loader.service, loader.applications);
     try loader.boot(selected);
 }

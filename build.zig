@@ -17,12 +17,19 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    const system = b.addModule("system", .{
+        .root_source_file = b.path("src/system/_.zig"),
+        .optimize = optimize,
+        .target = target,
+    });
+
     const volume = b.addModule("volume", .{
         .root_source_file = b.path("src/volume/_.zig"),
         .optimize = optimize,
         .target = target,
         .imports = &.{
             .{ .name = "utils", .module = utils },
+            .{ .name = "system", .module = system },
         },
     });
 
@@ -33,6 +40,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "utils", .module = utils },
             .{ .name = "volume", .module = volume },
+            .{ .name = "system", .module = system },
         },
     });
 
@@ -43,6 +51,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "utils", .module = utils },
             .{ .name = "volume", .module = volume },
+            .{ .name = "system", .module = system },
         },
     });
 

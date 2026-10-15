@@ -1,6 +1,8 @@
 const std = @import("std");
 const utils = @import("utils");
 const volume = @import("volume");
+const system = @import("system");
+
 const graphics = @import("_.zig");
 
 const uefi = std.os.uefi;
@@ -33,51 +35,35 @@ fn step(items: []const volume.Entry, from: usize, forward: bool) usize {
     return from;
 }
 
-pub fn select(applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
-    const system_table = uefi.system_table;
-
-    const con_out = system_table.con_out orelse {
-        return uefi.Error.Unsupported;
-    };
-
-    const con_in = system_table.con_in orelse {
-        return uefi.Error.Unsupported;
-    };
-
-    const boot_services = system_table.boot_services orelse {
-        return uefi.Error.Unsupported;
-    };
-
-    const geo = try con_out.queryMode(con_out.mode.mode);
-
+pub fn select(service: system.Service, applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
     var selected: usize = 0;
 
-    try graphics.clear();
+    try graphics.clear(service);
 
-    const value_pad: usize = geo.columns / 3;
+    const value_pad: usize = service.geo.columns / 3;
     const arrow_msg = std.unicode.utf8ToUtf16LeStringLiteral(" > ");
 
     var title_pad: usize = 0;
     const title_msg = std.unicode.utf8ToUtf16LeStringLiteral(" Select an operating system to boot: ");
 
-    if (geo.columns > title_msg.len) {
-        title_pad = (geo.columns - title_msg.len) / 2;
+    if (service.geo.columns > title_msg.len) {
+        title_pad = (service.geo.columns - title_msg.len) / 2;
     }
 
-    try con_out.setAttribute(.{ .foreground = .white, .background = .black });
-    try con_out.setCursorPosition(title_pad, 0);
-    _ = try con_out.outputString(title_msg.ptr);
+    try service.con_out.setAttribute(.{ .foreground = .white, .background = .black });
+    try service.con_out.setCursorPosition(title_pad, 0);
+    _ = try service.con_out.outputString(title_msg.ptr);
 
     var instruction_pad: usize = 0;
     const instruction_msg = std.unicode.utf8ToUtf16LeStringLiteral(" Use Up/Down to select, Enter to boot. ");
 
-    if (geo.columns > instruction_msg.len) {
-        instruction_pad = (geo.columns - instruction_msg.len) / 2;
+    if (service.geo.columns > instruction_msg.len) {
+        instruction_pad = (service.geo.columns - instruction_msg.len) / 2;
     }
 
-    try con_out.setAttribute(.{ .foreground = .yellow, .background = .black });
-    try con_out.setCursorPosition(instruction_pad, geo.rows - 1);
-    _ = try con_out.outputString(instruction_msg.ptr);
+    try service.con_out.setAttribute(.{ .foreground = .yellow, .background = .black });
+    try service.con_out.setCursorPosition(instruction_pad, service.geo.rows - 1);
+    _ = try service.con_out.outputString(instruction_msg.ptr);
 
     while (true) {
         var row: usize = 2;
@@ -86,20 +72,20 @@ pub fn select(applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
                 continue;
             }
 
-            try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try con_out.setCursorPosition(value_pad - 3, row);
+            try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+            try service.con_out.setCursorPosition(value_pad - 3, row);
 
             if (i == selected) {
-                try con_out.setAttribute(.{ .foreground = .white, .background = .blue });
+                try service.con_out.setAttribute(.{ .foreground = .white, .background = .blue });
             } else {
-                try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+                try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
             }
 
             if (i == selected) {
-                _ = try con_out.outputString(arrow_msg.ptr);
+                _ = try service.con_out.outputString(arrow_msg.ptr);
             } else {
                 for (0..3) |_| {
-                    _ = try con_out.outputString(&.{ ' ', 0 });
+                    _ = try service.con_out.outputString(&.{ ' ', 0 });
                 }
             }
 
@@ -107,28 +93,28 @@ pub fn select(applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
             switch (app.bootloader) {
                 .Efi => |*efi| {
                     used += efi.path.len;
-                    _ = try con_out.outputString(efi.path.ptr);
+                    _ = try service.con_out.outputString(efi.path.ptr);
                 },
                 .Image => unreachable,
                 .Kernel => |*kernel| {
                     used += kernel.path.len;
-                    _ = try con_out.outputString(kernel.path.ptr);
+                    _ = try service.con_out.outputString(kernel.path.ptr);
                 },
             }
 
-            for (0..geo.columns - used) |_| {
-                _ = try con_out.outputString(&.{ ' ', 0 });
+            for (0..service.geo.columns - used) |_| {
+                _ = try service.con_out.outputString(&.{ ' ', 0 });
             }
 
-            try con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+            try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
 
             row += 1;
         }
 
-        const events = [_]uefi.Event{con_in.wait_for_key};
-        _ = try boot_services.waitForEvent(&events);
+        const events = [_]uefi.Event{service.con_in.wait_for_key};
+        _ = try service.boot.waitForEvent(&events);
 
-        const key = try con_in.readKeyStroke();
+        const key = try service.con_in.readKeyStroke();
 
         switch (key.scan_code) {
             0x01 => {
@@ -141,7 +127,7 @@ pub fn select(applications: std.ArrayList(volume.Entry)) uefi.Error!usize {
         }
 
         if (key.unicode_char == 0x000D) {
-            try graphics.clear();
+            try graphics.clear(service);
 
             return selected;
         }
