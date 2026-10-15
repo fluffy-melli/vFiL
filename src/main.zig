@@ -12,6 +12,6 @@ pub fn main() uefi.Error!void {
 
     const booted = try loader.bootstrap();
 
-    const selected = try graphics.select(loader.service, loader.applications, booted);
+    const selected = try graphics.select(allocator, loader.service, loader.applications, booted);
     try loader.boot(booted, selected);
 }

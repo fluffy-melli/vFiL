@@ -35,14 +35,21 @@ fn step(items: []const volume.Entry, from: usize, forward: bool) usize {
     return from;
 }
 
-pub fn select(service: system.Service, applications: std.ArrayList(volume.Entry), booted: usize) uefi.Error!usize {
+pub fn select(allocator: std.mem.Allocator, service: system.Service, applications: std.ArrayList(volume.Entry), booted: usize) uefi.Error!usize {
+    var moved = false;
+    var re_draw = true;
     var selected: usize = 0;
+
+    const timeout: u64 = 7;
+    var last_elapsed: u64 = std.math.maxInt(u64);
 
     if (booted != std.math.maxInt(usize)) {
         selected = booted;
     }
 
     try graphics.clear(service);
+
+    const start = try service.runtime.getTime();
 
     const value_pad: usize = service.geo.columns / 3;
     const arrow_msg = std.unicode.utf8ToUtf16LeStringLiteral(" > ");
@@ -70,61 +77,133 @@ pub fn select(service: system.Service, applications: std.ArrayList(volume.Entry)
     _ = try service.con_out.outputString(instruction_msg.ptr);
 
     while (true) {
-        var row: usize = 2;
-        for (applications.items, 0..) |*app, i| {
-            if (!is_selectable(app)) {
-                continue;
-            }
+        if (re_draw) {
+            var row: usize = 2;
+            for (applications.items, 0..) |*app, i| {
+                if (!is_selectable(app)) {
+                    continue;
+                }
 
-            try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            try service.con_out.setCursorPosition(value_pad - 3, row);
-
-            if (i == selected) {
-                try service.con_out.setAttribute(.{ .foreground = .white, .background = .blue });
-            } else {
                 try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
-            }
+                try service.con_out.setCursorPosition(value_pad - 3, row);
 
-            if (i == selected) {
-                _ = try service.con_out.outputString(arrow_msg.ptr);
-            } else {
-                for (0..3) |_| {
+                if (i == selected) {
+                    try service.con_out.setAttribute(.{ .foreground = .white, .background = .blue });
+                } else {
+                    try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+                }
+
+                if (i == selected) {
+                    _ = try service.con_out.outputString(arrow_msg.ptr);
+                } else {
+                    for (0..3) |_| {
+                        _ = try service.con_out.outputString(&.{ ' ', 0 });
+                    }
+                }
+
+                var used: usize = value_pad * 2;
+                switch (app.bootloader) {
+                    .Efi => |*efi| {
+                        used += efi.path.len;
+                        _ = try service.con_out.outputString(efi.path.ptr);
+                    },
+                    .Image => unreachable,
+                    .Kernel => |*kernel| {
+                        used += kernel.path.len;
+                        _ = try service.con_out.outputString(kernel.path.ptr);
+                    },
+                }
+
+                for (0..service.geo.columns - used) |_| {
                     _ = try service.con_out.outputString(&.{ ' ', 0 });
                 }
+
+                try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+
+                row += 1;
             }
 
-            var used: usize = value_pad * 2;
-            switch (app.bootloader) {
-                .Efi => |*efi| {
-                    used += efi.path.len;
-                    _ = try service.con_out.outputString(efi.path.ptr);
-                },
-                .Image => unreachable,
-                .Kernel => |*kernel| {
-                    used += kernel.path.len;
-                    _ = try service.con_out.outputString(kernel.path.ptr);
-                },
+            re_draw = false;
+        }
+
+        if (!moved) {
+            const now = try service.runtime.getTime();
+
+            const elapsed_ns = now.@"0".toEpoch() -| start.@"0".toEpoch();
+            const elapsed = elapsed_ns / std.time.ns_per_s;
+
+            if (elapsed >= timeout) {
+                try graphics.clear(service);
+                return selected;
             }
 
-            for (0..service.geo.columns - used) |_| {
+            if (elapsed != last_elapsed) {
+                var auto_start_pad: usize = 0;
+                const auto_start_msg = std.fmt.allocPrint(allocator, " Booting in {d}s... ", .{timeout - elapsed}) catch {
+                    return uefi.Error.OutOfResources;
+                };
+                defer allocator.free(auto_start_msg);
+
+                const utf16_auto_start_msg = std.unicode.utf8ToUtf16LeAllocZ(allocator, auto_start_msg) catch {
+                    return uefi.Error.OutOfResources;
+                };
+                defer allocator.free(utf16_auto_start_msg);
+
+                if (service.geo.columns > utf16_auto_start_msg.len) {
+                    auto_start_pad = (service.geo.columns - utf16_auto_start_msg.len) / 2;
+                }
+
+                try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+                try service.con_out.setCursorPosition(auto_start_pad, service.geo.rows - 4);
+                _ = try service.con_out.outputString(utf16_auto_start_msg.ptr);
+
+                var auto_start_cancel_pad: usize = 0;
+                const auto_start_cancel_msg = std.unicode.utf8ToUtf16LeStringLiteral(" press any key to cancel ");
+
+                if (service.geo.columns > auto_start_cancel_msg.len) {
+                    auto_start_cancel_pad = (service.geo.columns - auto_start_cancel_msg.len) / 2;
+                }
+
+                try service.con_out.setCursorPosition(auto_start_cancel_pad, service.geo.rows - 3);
+                _ = try service.con_out.outputString(auto_start_cancel_msg.ptr);
+
+                last_elapsed = elapsed;
+            }
+        }
+
+        const key = service.con_in.readKeyStroke() catch |err| {
+            switch (err) {
+                error.NotReady => {
+                    try service.boot.stall(10_000);
+                    continue;
+                },
+                else => return err,
+            }
+        };
+
+        if (!moved) {
+            try service.con_out.setCursorPosition(0, service.geo.rows - 3);
+
+            for (0..service.geo.columns - 1) |_| {
                 _ = try service.con_out.outputString(&.{ ' ', 0 });
             }
 
-            try service.con_out.setAttribute(.{ .foreground = .lightgray, .background = .black });
+            try service.con_out.setCursorPosition(0, service.geo.rows - 4);
 
-            row += 1;
+            for (0..service.geo.columns - 1) |_| {
+                _ = try service.con_out.outputString(&.{ ' ', 0 });
+            }
+
+            moved = true;
         }
-
-        const events = [_]uefi.Event{service.con_in.wait_for_key};
-        _ = try service.boot.waitForEvent(&events);
-
-        const key = try service.con_in.readKeyStroke();
 
         switch (key.scan_code) {
             0x01 => {
+                re_draw = true;
                 selected = step(applications.items, selected, false);
             },
             0x02 => {
+                re_draw = true;
                 selected = step(applications.items, selected, true);
             },
             else => {},
@@ -132,7 +211,6 @@ pub fn select(service: system.Service, applications: std.ArrayList(volume.Entry)
 
         if (key.unicode_char == 0x000D) {
             try graphics.clear(service);
-
             return selected;
         }
     }
