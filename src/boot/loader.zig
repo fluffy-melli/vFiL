@@ -200,7 +200,7 @@ pub const Loader = struct {
                 return try self.show_error("a standalone image (e.g. initrd) cannot be booted directly", uefi.Error.InvalidParameter);
             },
             .Kernel => |*kernel| {
-                var utf8_cmdline = std.fmt.allocPrint(self.allocator, "root=PARTUUID={s} rw", .{kernel.part_uuid}) catch |err| {
+                var utf8_cmdline = self.allocator.print("root=PARTUUID={s} rw", .{kernel.part_uuid}) catch |err| {
                     return try self.show_error("failed to build kernel command line", err);
                 };
                 defer self.allocator.free(utf8_cmdline);
@@ -220,7 +220,7 @@ pub const Loader = struct {
                         continue;
                     }
 
-                    const next = std.fmt.allocPrint(self.allocator, "{s} initrd={s}", .{ utf8_cmdline, image.utf8_path }) catch |err| {
+                    const next = self.allocator.print("{s} initrd={s}", .{ utf8_cmdline, image.utf8_path }) catch |err| {
                         return try self.show_error("failed to append initrd to kernel command line", err);
                     };
 

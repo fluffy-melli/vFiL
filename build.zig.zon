@@ -2,7 +2,7 @@
     .name = .vFiL,
     .version = "0.0.0",
     .fingerprint = 0xd0520c7b027e1525,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",

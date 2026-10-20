@@ -172,7 +172,7 @@ pub const Entry = struct {
     },
 
     pub fn init(allocator: std.mem.Allocator, service: system.Service, handle: uefi.Handle, dir: *File, path: [:0]const u16, check_kernel: bool) uefi.Error!Entry {
-        const file_path = allocator.dupeZ(u16, path) catch {
+        const file_path = allocator.dupeSentinel(u16, path, 0) catch {
             return uefi.Error.OutOfResources;
         };
 

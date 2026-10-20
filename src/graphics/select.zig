@@ -139,7 +139,7 @@ pub fn select(allocator: std.mem.Allocator, service: system.Service, application
 
             if (elapsed != last_elapsed) {
                 var auto_start_pad: usize = 0;
-                const auto_start_msg = std.fmt.allocPrint(allocator, " Booting in {d}s... ", .{timeout - elapsed}) catch {
+                const auto_start_msg = allocator.print(" Booting in {d}s... ", .{timeout - elapsed}) catch {
                     return uefi.Error.OutOfResources;
                 };
                 defer allocator.free(auto_start_msg);

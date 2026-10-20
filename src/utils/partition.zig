@@ -34,7 +34,7 @@ pub fn get_part_uuid(allocator: std.mem.Allocator, device_path: *const DevicePat
                 const b = std.mem.readInt(u16, sig[4..6], .little);
                 const c = std.mem.readInt(u16, sig[6..8], .little);
 
-                return std.fmt.allocPrint(allocator, "{x:0>8}-{x:0>4}-{x:0>4}-{x:0>2}{x:0>2}-{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}", .{ a, b, c, sig[8], sig[9], sig[10], sig[11], sig[12], sig[13], sig[14], sig[15] }) catch {
+                return allocator.print("{x:0>8}-{x:0>4}-{x:0>4}-{x:0>2}{x:0>2}-{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}{x:0>2}", .{ a, b, c, sig[8], sig[9], sig[10], sig[11], sig[12], sig[13], sig[14], sig[15] }) catch {
                     return uefi.Error.OutOfResources;
                 };
             }
@@ -42,7 +42,7 @@ pub fn get_part_uuid(allocator: std.mem.Allocator, device_path: *const DevicePat
             if (format == 1 and sig_type == 1) {
                 const disk_sig = std.mem.readInt(u32, sig[0..4], .little);
 
-                return std.fmt.allocPrint(allocator, "{x:0>8}-{x:0>2}", .{ disk_sig, part_number }) catch {
+                return allocator.print("{x:0>8}-{x:0>2}", .{ disk_sig, part_number }) catch {
                     return uefi.Error.OutOfResources;
                 };
             }
