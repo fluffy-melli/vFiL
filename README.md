@@ -6,7 +6,7 @@
 > [!CAUTION]
 > This bootloader does not support Secure Boot yet.
 >
-> Disable Secure Boot in your firmware settings before using it. otherwise, the firmware may refuse to load the bootloader.
+> Disable Secure Boot in your firmware settings before using it. Otherwise, the firmware may refuse to load the bootloader.
 
 ## Installation
 
@@ -17,7 +17,7 @@ Prepare `BOOTX64.efi` from the [Releases](https://github.com/fluffy-melli/vFiL/r
 > [!WARNING]
 > The commands below are examples that use `/dev/sda` and `/dev/sda1`.
 >
-> Check which device is yours (e.g., with `lsblk`) and adjust the commands accordingly.
+> Use `lsblk` to identify your USB drive and adjust the device names accordingly. **These commands will erase the existing partition table and filesystem on the selected drive.** Make sure you select the correct device before proceeding.
 
 ```bash
 sudo umount /dev/sda1
@@ -43,7 +43,7 @@ sudo umount /mnt
 > [!WARNING]
 > The commands below are examples that use `/dev/nvme0n1` and `partition 1 (/dev/nvme0n1p1)`.
 >
-> Check which device and partition are yours (e.g., with `lsblk -o NAME,FSTYPE,PARTUUID,SIZE,MOUNTPOINTS`) and adjust the commands accordingly.
+> Use `lsblk` to identify the EFI System Partition (ESP) mounted at `/boot/efi` in the `MOUNTPOINTS` column. Adjust the device and partition numbers in the commands accordingly.
 
 ```bash
 sudo mkdir -p /boot/efi/EFI/vFiL
