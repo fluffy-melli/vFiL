@@ -43,9 +43,6 @@ jobs:
           cp MOK.cer dist/
           cp zig-out/bin/* dist/
 
-      - name: checksums
-        run: cd dist && sha256sum * > SHA256SUMS.txt
-
       - name: upload to release
         env:
           TAG: ${{ github.event.release.tag_name }}
