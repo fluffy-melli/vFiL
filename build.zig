@@ -1,11 +1,19 @@
 const std = @import("std");
 
 fn sbsign(b: *std.Build, root: std.Build.LazyPath, filename: []const u8) std.Build.LazyPath {
-    const command = b.addSystemCommand(&.{ "sbsign", "--key", "MOK.key", "--cert", "MOK.crt", "--output" });
+    const command = b.addSystemCommand(&.{"sbsign"});
 
+    command.addArg("--key");
+    command.addFileArg(b.path("MOK.key"));
+
+    command.addArg("--cert");
+    command.addFileArg(b.path("MOK.crt"));
+
+    command.addArg("--output");
     const output = command.addOutputFileArg(filename);
 
     command.addFileArg(root);
+    command.expectStdErrMatch("Signing Unsigned original image");
 
     return output;
 }
