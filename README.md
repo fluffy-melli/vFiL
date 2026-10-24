@@ -1,23 +1,23 @@
 > [!CAUTION]
-> This bootloader does not support LVM yet.
+> LVM is not supported yet.
 >
 > Booting an OS installed on LVM may fail or cause unexpected behavior.
 
-> [!CAUTION]
-> This bootloader does not support Secure Boot yet.
->
-> Disable Secure Boot in your firmware settings before using it. Otherwise, the firmware may refuse to load the bootloader.
-
 ## Installation
 
-Prepare `BOOTX64.efi` from the [Releases](https://github.com/fluffy-melli/vFiL/releases) page, or an `.efi` file you built yourself.
+Download `MOK.cer`, `ext4_x64.efi`, and `BOOTX64.efi` from the [Releases](https://github.com/fluffy-melli/vFiL/releases) page, or use files you built yourself.
+
+> [!IMPORTANT]
+> To boot with Secure Boot enabled, you must first allow `MOK.cer` in your motherboard firmware (BIOS/UEFI) settings.
+>
+> The Linux kernel must also be trusted: either sign it with `MOK.cer`, or allow its Linux CA certificate in the firmware.
 
 ### Install to a USB drive
 
 > [!WARNING]
 > The commands below are examples that use `/dev/sda` and `/dev/sda1`.
 >
-> Use `lsblk` to identify your USB drive and adjust the device names accordingly. **These commands will erase the existing partition table and filesystem on the selected drive.** Make sure you select the correct device before proceeding.
+> Run `lsblk` to identify your USB drive and adjust the device names accordingly. **These commands erase the existing partition table and filesystem on the selected drive.** Double-check the device before proceeding.
 
 ```bash
 sudo umount /dev/sda1
@@ -31,9 +31,17 @@ sudo mkfs.fat -F 32 /dev/sda1
 sudo mount /dev/sda1 /mnt
 
 sudo mkdir -p /mnt/EFI/BOOT
+sudo mkdir -p /mnt/EFI/DRIVERS
+
+sudo cp ./MOK.cer /mnt/EFI/BOOT/MOK.cer
 
 sudo cp ./BOOTX64.efi /mnt/EFI/BOOT/BOOTX64.efi
+# If you built it yourself:
 # sudo cp ./zig-out/bin/BOOTX64.efi /mnt/EFI/BOOT/BOOTX64.efi
+
+sudo cp ./ext4_x64.efi /mnt/EFI/DRIVERS/ext4_x64.efi
+# If you built it yourself:
+# sudo cp ./zig-out/bin/ext4_x64.efi /mnt/EFI/DRIVERS/ext4_x64.efi
 
 sudo umount /mnt
 ```
@@ -41,15 +49,23 @@ sudo umount /mnt
 ### Install to the EFI System Partition (ESP)
 
 > [!WARNING]
-> The commands below are examples that use `/dev/nvme0n1` and `partition 1 (/dev/nvme0n1p1)`.
+> The commands below are examples that use `/dev/nvme0n1` and partition 1 (`/dev/nvme0n1p1`).
 >
-> Use `lsblk` to identify the EFI System Partition (ESP) mounted at `/boot/efi` in the `MOUNTPOINTS` column. Adjust the device and partition numbers in the commands accordingly.
+> Run `lsblk` and find the EFI System Partition (ESP) mounted at `/boot/efi` in the `MOUNTPOINTS` column. Adjust the device and partition numbers accordingly.
 
 ```bash
 sudo mkdir -p /boot/efi/EFI/vFiL
+sudo mkdir -p /boot/efi/EFI/DRIVERS
+
+sudo cp ./MOK.cer /boot/efi/EFI/vFiL/MOK.cer
 
 sudo cp ./BOOTX64.efi /boot/efi/EFI/vFiL/BOOTX64.efi
+# If you built it yourself:
 # sudo cp ./zig-out/bin/BOOTX64.efi /boot/efi/EFI/vFiL/BOOTX64.efi
+
+sudo cp ./ext4_x64.efi /boot/efi/EFI/DRIVERS/ext4_x64.efi
+# If you built it yourself:
+# sudo cp ./zig-out/bin/ext4_x64.efi /boot/efi/EFI/DRIVERS/ext4_x64.efi
 
 sudo efibootmgr \
   --create \
@@ -59,13 +75,20 @@ sudo efibootmgr \
   --loader '\EFI\vFiL\BOOTX64.efi'
 ```
 
-## Build From Source
+## Build from Source
 
-The default branch of vFiL targets [master](https://github.com/fluffy-melli/vFiL).
+The default branch of vFiL is [master](https://github.com/fluffy-melli/vFiL).
 
 ```bash
+sudo apt install sbsigntool
+
 git clone https://github.com/fluffy-melli/vFiL
 cd vFiL
+
+# Generate a Machine Owner Key (MOK)
+openssl req -new -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes -keyout MOK.key -out MOK.crt
+openssl x509 -in MOK.crt -outform DER -out MOK.cer
+
 zig build
 ```
 
@@ -74,4 +97,4 @@ zig build
 > [!NOTE]
 > This project bundles the following third-party binary.
 
-- [`ext4_x64.efi`](https://github.com/fluffy-melli/vFiL/blob/main/asset/ext4_x64.efi): ext4 filesystem driver (x64), from [rEFInd](https://www.rodsbooks.com/refind/)
+- [`ext4_x64.efi`](https://github.com/fluffy-melli/vFiL/blob/main/third-party/ext4_x64.efi): ext4 filesystem driver (x64), from [rEFInd](https://www.rodsbooks.com/refind/)
