@@ -1,0 +1,57 @@
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            openssl sbsigntool
+
+      - name: setup signing keys
+        env:
+          MOK_KEY: ${{ secrets.MOK_KEY }}
+          MOK_CRT: ${{ secrets.MOK_CRT }}
+        run: |
+          umask 077
+          printf '%s' "$MOK_KEY" > MOK.key
+          printf '%s' "$MOK_CRT" > MOK.crt
+          openssl x509 -in MOK.crt -outform DER -out MOK.cer
+
+      - name: code build
+        run: zig build
+
+      - name: package
+        run: |
+          mkdir -p dist
+          cp MOK.cer dist/
+          cp zig-out/bin/* dist/
+
+      - name: checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt
+
+      - name: upload to release
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" dist/* --clobber
+
+      - name: cleanup keys
+        if: always()
+        run: shred -u MOK.key MOK.crt 2>/dev/null || rm -f MOK.key MOK.crt
