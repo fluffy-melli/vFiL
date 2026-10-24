@@ -1,0 +1,49 @@
+name: version
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: setup git config
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: replace previous version with release tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          OLD=$(sed -nE 's/^\s*\.version = "([^"]+)".*/\1/p' build.zig.zon)
+          [ -n "$OLD" ] || {
+            exit 1;
+          }
+
+          OLD_RE=$(printf '%s' "$OLD" | sed 's/[.[\*^$/]/\\&/g')
+
+          sed -i -E "s/(\.version = \")${OLD_RE}(\")/\1${TAG#v}\2/" build.zig.zon
+          sed -i -E "s/^(vfil,1,fluffy-melli,vfil,)${OLD_RE}(,)/\1${TAG#v}\2/" sbat.csv
+
+          grep -nF "${TAG#v}" build.zig.zon sbat.csv
+
+      - name: commit and push
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+
+          git commit -am "chore: bump version to ${TAG#v}"
+          git push origin main
