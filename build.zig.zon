@@ -1,6 +1,6 @@
 .{
     .name = .vFiL,
-    .version = "0.0.0",
+    .version = "0.0.11",
     .fingerprint = 0xd0520c7b027e1525,
     .minimum_zig_version = "0.17.0",
     .dependencies = .{},

@@ -4,6 +4,10 @@ const graphics = @import("graphics");
 
 const uefi = std.os.uefi;
 
+const sbat = @embedFile("sbat");
+
+pub export const _ linksection(".sbat") = sbat.*;
+
 pub fn main() uefi.Error!void {
     const allocator = uefi.pool_allocator;
 

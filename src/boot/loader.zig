@@ -6,8 +6,6 @@ const system = @import("system");
 const uefi = std.os.uefi;
 const SimpleFileSystem = uefi.protocol.SimpleFileSystem;
 
-const ext4_driver = @embedFile("ext4_x64");
-
 pub const Loader = struct {
     allocator: std.mem.Allocator,
 
@@ -88,7 +86,30 @@ pub const Loader = struct {
     }
 
     fn load_ext4_driver(self: *Loader) uefi.Error!void {
-        const driver = self.service.boot.loadImage(false, uefi.handle, .{ .buffer = ext4_driver }) catch |err| {
+        const path = std.unicode.utf8ToUtf16LeStringLiteral("\\EFI\\DRIVERS\\ext4_x64.efi");
+
+        const loaded = self.service.boot.handleProtocol(uefi.protocol.LoadedImage, uefi.handle) catch |err| {
+            return try self.show_error("failed to get loaded image info", err);
+        } orelse {
+            return try self.show_error("loaded image info not found", uefi.Error.NotFound);
+        };
+
+        const device = loaded.device_handle orelse {
+            return try self.show_error("boot device handle not found", uefi.Error.NotFound);
+        };
+
+        const volume_path = self.service.boot.handleProtocol(uefi.protocol.DevicePath, device) catch |err| {
+            return try self.show_error("failed to get boot device path", err);
+        } orelse {
+            return try self.show_error("boot device path not found", uefi.Error.NotFound);
+        };
+
+        const driver_path = volume_path.createFileDevicePath(self.allocator, path) catch |err| {
+            return try self.show_error("failed to build ext4 driver device path", err);
+        };
+        defer self.allocator.destroy(driver_path);
+
+        const driver = self.service.boot.loadImage(false, uefi.handle, .{ .device_path = driver_path }) catch |err| {
             return try self.show_error("failed to load ext4 driver image", err);
         };
 

@@ -2,4 +2,8 @@ zig-out
 .zig-cache
 
 esp
+esp-sb
+
 test
+
+MOK.*

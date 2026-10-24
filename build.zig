@@ -1,5 +1,15 @@
 const std = @import("std");
 
+fn sbsign(b: *std.Build, root: std.Build.LazyPath, filename: []const u8) std.Build.LazyPath {
+    const command = b.addSystemCommand(&.{ "sbsign", "--key", "MOK.key", "--cert", "MOK.crt", "--output" });
+
+    const output = command.addOutputFileArg(filename);
+
+    command.addFileArg(root);
+
+    return output;
+}
+
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{
         .preferred_optimize_mode = .ReleaseSafe,
@@ -55,10 +65,6 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    boot.addAnonymousImport("ext4_x64", .{
-        .root_source_file = b.path("asset/ext4_x64.efi"),
-    });
-
     const exe = b.addExecutable(.{
         .name = "BOOTX64",
         .root_module = b.createModule(.{
@@ -73,5 +79,15 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    b.installArtifact(exe);
+    exe.root_module.addAnonymousImport("sbat", .{
+        .root_source_file = b.path("sbat.csv"),
+    });
+
+    const signed_ext4_driver = sbsign(b, b.path("third-party/ext4_x64.efi"), "ext4_x64.efi");
+    const install_ext4_driver = b.addInstallFileWithDir(signed_ext4_driver, .bin, "ext4_x64.efi");
+    b.getInstallStep().dependOn(&install_ext4_driver.step);
+
+    const signed_bootx64 = sbsign(b, exe.getEmittedBin(), "BOOTX64.efi");
+    const install_bootx64 = b.addInstallFileWithDir(signed_bootx64, .bin, "BOOTX64.efi");
+    b.getInstallStep().dependOn(&install_bootx64.step);
 }
